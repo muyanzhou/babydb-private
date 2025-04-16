@@ -135,7 +135,7 @@ struct SkipList {
         return current->row_id;
     }
 };
-
+//! Linked list is written for the sake of simplicity, but it is not used in the final version
 struct LinkList {
     LinkList* next;
     idx_t row_id;
@@ -197,7 +197,7 @@ struct LeafNode {
         return sk->query(ts);
     }
 };
-//! Store a data or a pointer, distinguished by the last bit.
+//! Store a LeafNode type or an ArtNode type, distinguished by the last bit
 class TreePointer {
 public:
     // Equals to TreePointer(nullptr)
@@ -802,7 +802,7 @@ std::vector<babydb::idx_t>& row_ids, idx_t query_ts, bool equalLow = true, bool 
 
     ArtNode* artNode = n.AsPtr();
     uint32_t copyLen = std::min(artNode->prefixLength, (uint32_t)ART_KEY_LENGTH - currentPrefixLength);
-    //! Check if the prefix is in range
+    //! Check if the prefix is in range, and update equalLow and equalHigh flags
     for (uint32_t i = 0; i < copyLen; i++) {
         uint8_t low = lowerKey[currentPrefixLength + i];
         uint8_t high = upperKey[currentPrefixLength + i];
@@ -822,6 +822,7 @@ std::vector<babydb::idx_t>& row_ids, idx_t query_ts, bool equalLow = true, bool 
             break;
         }
     }
+    //! Update the current prefix with the prefix of the current node
     memcpy(currentPrefix + currentPrefixLength, artNode->prefix, copyLen);
     currentPrefixLength += copyLen;
     if (equalHigh == false && equalLow == false) in_range = 1;
@@ -830,6 +831,7 @@ std::vector<babydb::idx_t>& row_ids, idx_t query_ts, bool equalLow = true, bool 
         if (child.Empty()) return;
         
         if (currentPrefixLength < ART_KEY_LENGTH) {
+            //! Add the keyByte to the current prefix, and do some checks
             currentPrefix[currentPrefixLength] = keyByte;
             bool teH = equalHigh, teL = equalLow;
             int temp = in_range;
@@ -851,6 +853,7 @@ std::vector<babydb::idx_t>& row_ids, idx_t query_ts, bool equalLow = true, bool 
             rangeScan(child, lowerKey, upperKey, currentPrefix, currentPrefixLength, row_ids, query_ts, equalLow, equalHigh, in_range);
         }
     };
+    //! Process the children of the current node
     switch (artNode->type) {
         case NodeType4: {
             Node4* node = static_cast<Node4*>(artNode);

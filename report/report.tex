@@ -1,0 +1,76 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{hyperref}
+\usepackage{listings}
+
+\title{Analysis of Adaptive Radix Tree (ART) Design and Range Query Implementation}
+\author{Muyan Zhou}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Design Logic of Adaptive Radix Tree (ART)}
+
+\subsection{Core Design Principles and Motivation}
+The Adaptive Radix Tree (ART) is a high-performance in-memory indexing structure that addresses the limitations of traditional radix trees and Tries. Its core design principles include:
+
+\begin{itemize}
+\item \textbf{Adaptive Node Sizes}: ART uses four different node types (\texttt{Node4}, \texttt{Node16}, \texttt{Node48}, \texttt{Node256}) that automatically adapt to the number of children, as shown in the \texttt{ArtNodeType} enum in \texttt{art.cpp}. By using different node types, ART minimizes memory overhead while maintaining fast access times.
+
+\item \textbf{Path Compression}: ART employs prefix compression to reduce tree height, implemented via the \texttt{prefix} and \texttt{prefixLength} fields in the \texttt{ArtNode} structure. Also, nodes with only one child are compressed, reducing tree height and improving lookup times.
+
+\end{itemize}
+
+\subsection{Improvements Over Traditional Structures}
+ART improves upon traditional radix trees and Tries in several ways:
+
+\begin{itemize}
+\item \textbf{Memory Efficiency}: Unlike fixed-size nodes in conventional radix trees, ART's adaptive nodes reduce memory consumption for sparse nodes. ART automatically upgrades/downgrades node types during insertion/deletion (implemented in \texttt{insertNode*} and \texttt{eraseNode*} functions).
+
+\item \textbf{Time Efficiency}: ART's adaptive node types and path compression lead to faster lookups and insertions. For example, the \texttt{lookup} function uses SIMD operations for \texttt{Node16} and direct indexing for \texttt{Node256}, significantly speeding up key comparisons.
+
+\end{itemize}
+
+\subsection{Efficient Operations}
+ART supports efficient operations through:
+
+\begin{itemize}
+\item \textbf{Insertion}: The \texttt{insert} function handles prefix splitting and node type conversion. It uses path compression and maintains sorted keys for efficient child lookup.
+
+\item \textbf{Lookup}: The \texttt{lookup} function leverages prefix compression and optimized child search methods (e.g. SIMD in Node16, direct indexing in Node256).
+
+\item \textbf{Deletion}: The \texttt{erase} function handles node consolidation and type downgrading when child counts fall below thresholds.
+\end{itemize}
+
+\section{Implementation of Range Query}
+At the beginning, the range is made inclusive to simplify the implementation. 
+The range query implementation in \texttt{rangeScan} employs an optimized depth-first traversal with the following key aspects:
+
+\begin{enumerate}
+\item \textbf{Prefix Accumulation}: Maintains a running prefix during traversal that represents the path from the root to the current node.
+
+\item \textbf{Three-State Range Checking}:
+\begin{itemize}
+\item \texttt{equalLow}: True if current path exactly matches lower bound prefix
+\item \texttt{equalHigh}: True if current path exactly matches upper bound prefix
+\item \texttt{in\_range}: Integer flag indicating position relative to range (1=inside, 0=border, -1=outside)
+\end{itemize}
+
+\item \textbf{Early Termination}:
+\begin{itemize}
+\item Skips subtrees when \texttt{in\_range} is -1
+\item Fast-tracks collection when \texttt{in\_range} is 1
+\end{itemize}
+
+\item \textbf{Leaf Validation}:
+\begin{itemize}
+\item For leaves, performs exact key comparison against bounds
+\item Only adds to results if key $\in$ [lowerKey, upperKey]
+\end{itemize}
+\end{enumerate}
+
+\end{document}
