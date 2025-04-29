@@ -1,6 +1,7 @@
 #include "storage/art.hpp"
 #include "execution/execution_context.hpp"
 #include "concurrency/transaction.hpp"
+#include "concurrency/version_link.hpp"
 
 #include <cassert>
 #include <cstring>
@@ -66,85 +67,14 @@ struct ArtNode {
 
 static_assert(sizeof(ArtNode*) == sizeof(idx_t), "Please use 64-bit machine");
 
-static const uint32_t SKIPLIST_LEVEL = 20;
-// static const double SKIPLIST_P = 0.5;
-std::mt19937 rd(time(0));
-struct SkipListNode {
-    idx_t row_id, timestamp, level;
-    SkipListNode *next, *down;
-    SkipListNode(idx_t ri, idx_t ts, idx_t l, SkipListNode* n, SkipListNode* d) : row_id(ri), timestamp(ts), level(l), next(n), down(d) {}
-};
-struct SkipList {
-    uint32_t level;
-    SkipListNode* head[SKIPLIST_LEVEL];
-    SkipListNode* tail[SKIPLIST_LEVEL];
-    SkipList() : level(0) {
-        for (uint32_t i = 0; i < SKIPLIST_LEVEL; i++) {
-            tail[i] = new SkipListNode(0, 1ULL << 32, i, nullptr, i ? tail[i - 1] : nullptr);
-            head[i] = new SkipListNode(0, 0, i, tail[i], i ? head[i - 1] : nullptr);
-        }
-    }
-    ~SkipList() {
-        for (uint32_t i = 0; i < SKIPLIST_LEVEL; i++) {
-            SkipListNode* cur = head[i];
-            while (cur != nullptr) {
-                SkipListNode* tmp = cur->next;
-                delete cur;
-                cur = tmp;
-            }
-        }
-    }
-    uint32_t randomLevel() {
-        uint32_t lvl = 0;
-        while (lvl < SKIPLIST_LEVEL - 1 && (rd() & 1)) lvl++;
-        return lvl;
-    }
-    
-    void insert(idx_t row_id, idx_t timestamp) {
-        SkipListNode* update[SKIPLIST_LEVEL];
-        SkipListNode* current = head[level];
-        
-        for (int i = level; i >= 0; i--) {
-            while (current->next != tail[i] && current->next->timestamp < timestamp)
-                current = current->next;
-            update[i] = current;
-            if (i > 0) current = current->down;
-        }
-        uint32_t new_level = randomLevel();
-        if (new_level > level) {
-            for (uint32_t i = level + 1; i <= new_level; i++)
-                update[i] = head[i];
-            level = new_level;
-        }
-        
-        SkipListNode* bottom_node = nullptr;
-        for (uint32_t i = 0; i <= new_level; i++) {
-            SkipListNode* new_node = new SkipListNode(row_id, timestamp, i, update[i]->next, nullptr);
-            if (i > 0) new_node->down = bottom_node;
-            update[i]->next = new_node;
-            bottom_node = new_node;
-        }
-    }
-    
-    idx_t query(idx_t ts) {
-        SkipListNode* current = head[level];
-        for (int i = level; i >= 0; i--) {
-            while (current->next != tail[i] && current->next->timestamp <= ts)
-                current = current->next;
-            if (current->timestamp == ts) return current->row_id;            
-            if (i > 0) current = current->down;
-        }
-        return current->row_id;
-    }
-};
 struct LeafNode {
     key_t key;
     idx_t timestamp;
-    SkipList* sk;
+    VersionSkipList* sk;
     LeafNode(key_t key, idx_t value, idx_t ts) {
         std::memcpy(this->key, key, ART_KEY_LENGTH);
         timestamp = ts;
-        sk = new SkipList();
+        sk = new VersionSkipList();
         sk->insert(value, ts);
     }
     ~LeafNode() {delete sk;}
