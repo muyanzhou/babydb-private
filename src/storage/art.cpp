@@ -69,21 +69,10 @@ static_assert(sizeof(ArtNode*) == sizeof(idx_t), "Please use 64-bit machine");
 
 struct LeafNode {
     key_t key;
-    idx_t timestamp;
-    VersionSkipList* sk;
-    LeafNode(key_t key, idx_t value, idx_t ts) {
+    idx_t row_id;
+    LeafNode(key_t key, idx_t rid) {
         std::memcpy(this->key, key, ART_KEY_LENGTH);
-        timestamp = ts;
-        sk = new VersionSkipList();
-        sk->insert(value, ts);
-    }
-    ~LeafNode() {delete sk;}
-    void insert(idx_t row_id, idx_t ts) {
-        sk->insert(row_id, ts);
-        timestamp = std::max(timestamp, ts);
-    }
-    idx_t query(idx_t ts) {
-        return sk->query(ts);
+        row_id = rid;
     }
 };
 //! Store a LeafNode type or an ArtNode type, distinguished by the last bit
@@ -377,20 +366,19 @@ TreePointer lookup(TreePointer node, key_t key, uint32_t depth) {
 }
 
 
-void insert(TreePointer node, TreePointer* nodeRef, key_t key, uint32_t depth, data_t value, idx_t timestamp, bool exist);
+void insert(TreePointer node, TreePointer* nodeRef, key_t key, idx_t rid, uint32_t depth, bool exist);
 void insertNode4(Node4* node, TreePointer* nodeRef, uint8_t keyByte, TreePointer child);
 void insertNode16(Node16* node, TreePointer* nodeRef, uint8_t keyByte, TreePointer child);
 void insertNode48(Node48* node, TreePointer* nodeRef, uint8_t keyByte, TreePointer child);
 void insertNode256(Node256* node, TreePointer* nodeRef, uint8_t keyByte, TreePointer child);
 
-void insert(TreePointer node, TreePointer* nodeRef, key_t key, uint32_t depth, data_t value, idx_t timestamp, bool exist) {
+void insert(TreePointer node, TreePointer* nodeRef, key_t key, idx_t rid, uint32_t depth, bool exist) {
     if (node.Empty()) {
-        *nodeRef = TreePointer(new LeafNode(key, value, timestamp));
+        *nodeRef = TreePointer(new LeafNode(key, rid));
         return;
     }
     if (node.IsLeaf()) {
         if (exist) {
-            node.AsData()->insert(value, timestamp);
             return;
         }
         key_t existingKey;
@@ -404,7 +392,7 @@ void insert(TreePointer node, TreePointer* nodeRef, key_t key, uint32_t depth, d
         std::memcpy(newNode->prefix, key + depth, std::min(newPrefixLength, MAX_PREFIX_LENGTH));
         *nodeRef = newNode;
         insertNode4(newNode, nodeRef, existingKey[depth + newPrefixLength], node);
-        insertNode4(newNode, nodeRef, key[depth + newPrefixLength], TreePointer(new LeafNode(key, value, timestamp)));
+        insertNode4(newNode, nodeRef, key[depth + newPrefixLength], TreePointer(new LeafNode(key, rid)));
         return;
     }
     if (node->prefixLength) {
@@ -425,7 +413,7 @@ void insert(TreePointer node, TreePointer* nodeRef, key_t key, uint32_t depth, d
                 insertNode4(newNode, nodeRef, minKey[depth + mismatchPos], node);
                 std::memmove(node->prefix, minKey + depth + mismatchPos + 1, std::min(node->prefixLength, MAX_PREFIX_LENGTH));
             }
-            insertNode4(newNode, nodeRef, key[depth + mismatchPos], TreePointer(new LeafNode(key, value, timestamp)));
+            insertNode4(newNode, nodeRef, key[depth + mismatchPos], TreePointer(new LeafNode(key, rid)));
             return;
         }
         depth += node->prefixLength;
@@ -433,10 +421,10 @@ void insert(TreePointer node, TreePointer* nodeRef, key_t key, uint32_t depth, d
     auto node_p = node.AsPtr();
     auto &child = findChild(node_p, key[depth]);
     if (!child.Empty()) {
-        insert(child, &child, key, depth + 1, value, timestamp, exist);
+        insert(child, &child, key, rid, depth + 1, exist);
         return;
     }
-    TreePointer newNode = TreePointer(new LeafNode(key, value, timestamp));
+    TreePointer newNode = TreePointer(new LeafNode(key, rid));
     switch (node->type) {
         case NodeType4:
             insertNode4(static_cast<Node4*>(node_p), nodeRef, key[depth], newNode);
@@ -669,12 +657,12 @@ void eraseNode256(Node256* node, TreePointer* nodeRef, uint8_t keyByte) {
 }
 
 void rangeScan(TreePointer n, const key_t lowerKey, const key_t upperKey, key_t currentPrefix, uint32_t currentPrefixLength, 
-std::vector<babydb::idx_t>& row_ids, idx_t query_ts, bool equalLow = true, bool equalHigh = true, int in_range = 0) {
+std::vector<babydb::idx_t>& row_ids, ExecutionContext &exec_ctx, bool equalLow = true, bool equalHigh = true, int in_range = 0) {
     if (n.Empty()) return;
 
     if (n.IsLeaf()) {
         if (in_range == 1) {
-            row_ids.push_back(n.AsData()->query(query_ts));
+            row_ids.push_back(n.AsData()->row_id);
             return;
         }
         auto leafKey = n.AsData()->key;
@@ -685,7 +673,7 @@ std::vector<babydb::idx_t>& row_ids, idx_t query_ts, bool equalLow = true, bool 
             if (equalLow && leafKey[i] > lowerKey[i]) equalLow = false;
             if (equalHigh && leafKey[i] < upperKey[i]) equalHigh = false;
         }
-        row_ids.push_back(n.AsData()->query(query_ts));
+        row_ids.push_back(n.AsData()->row_id);
         return;
     }
 
@@ -737,9 +725,9 @@ std::vector<babydb::idx_t>& row_ids, idx_t query_ts, bool equalLow = true, bool 
             }
 
             if (teH == false && teL == false) temp = 1;
-            rangeScan(child, lowerKey, upperKey, currentPrefix, currentPrefixLength + 1, row_ids, query_ts, teL, teH, temp);
+            rangeScan(child, lowerKey, upperKey, currentPrefix, currentPrefixLength + 1, row_ids, exec_ctx, teL, teH, temp);
         } else {
-            rangeScan(child, lowerKey, upperKey, currentPrefix, currentPrefixLength, row_ids, query_ts, equalLow, equalHigh, in_range);
+            rangeScan(child, lowerKey, upperKey, currentPrefix, currentPrefixLength, row_ids, exec_ctx, equalLow, equalHigh, in_range);
         }
     };
     //! Process the children of the current node
@@ -857,10 +845,11 @@ ArtIndex::ArtIndex(const std::string &name, Table &table, const std::string &key
 ArtIndex::~ArtIndex() {}
 
 void ArtIndex::InsertEntry(const data_t &key, idx_t row_id, ExecutionContext &exec_ctx) {
+    // std::cout << "Insert " << exec_ctx.txn_.txn_id_ << " " << key << " " << row_id << std::endl;
     bool exist = LookupKey(key, exec_ctx) != INVALID_ID;
     key_t keyBytes;
     loadKey(key, keyBytes);
-    insert(art_tree_->root_, &art_tree_->root_, keyBytes, 0, row_id, exec_ctx.txn_.read_ts_, exist);
+    insert(art_tree_->root_, &art_tree_->root_, keyBytes, row_id, 0, exist);
 }
 
 idx_t ArtIndex::LookupKey(const data_t &key, ExecutionContext &exec_ctx) {
@@ -870,7 +859,7 @@ idx_t ArtIndex::LookupKey(const data_t &key, ExecutionContext &exec_ctx) {
     if (leaf.Empty() || !leaf.IsLeaf()) {
         return INVALID_ID;
     }
-    return static_cast<idx_t>(leaf.AsData()->query(exec_ctx.txn_.read_ts_));
+    return static_cast<idx_t>(leaf.AsData()->row_id);
 }
 
 void ArtIndex::ScanRange(const RangeInfo &range, std::vector<idx_t> &row_ids, ExecutionContext &exec_ctx) {
@@ -900,7 +889,7 @@ void ArtIndex::ScanRange(const RangeInfo &range, std::vector<idx_t> &row_ids, Ex
         }
     }
     key_t prex;
-    rangeScan(art_tree_->root_, lowerKey, upperKey, prex, 0, row_ids, exec_ctx.txn_.read_ts_);
+    rangeScan(art_tree_->root_, lowerKey, upperKey, prex, 0, row_ids, exec_ctx);
 }
 
 } // namespace babydb

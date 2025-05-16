@@ -2,12 +2,14 @@
 
 #include "common/typedefs.hpp"
 #include "common/macro.hpp"
+#include "concurrency/version_link.hpp"
 
 #include <mutex>
 #include <set>
 #include <string>
 #include <shared_mutex>
 #include <vector>
+#include <map>
 
 namespace babydb {
 
@@ -15,9 +17,49 @@ struct TupleMeta {
 
 };
 
+class Table;
+
 struct Row {
-    Tuple tuple_;
-    TupleMeta tuple_meta_;
+    idx_t uncommitted_txn_id_{INVALID_ID}, rid{0};
+    Tuple uncommitted_version_;
+    VersionSkipList *version_list_{nullptr};
+    Table *table_{nullptr};
+    mutable std::shared_mutex latch_;
+    mutable std::mutex map_latch_;
+    Row(const Row&) = delete;
+    Row& operator=(const Row&) = delete;
+
+    Row(Row&& other) noexcept 
+        : uncommitted_txn_id_(other.uncommitted_txn_id_),
+        rid(other.rid),
+        uncommitted_version_(std::move(other.uncommitted_version_)),
+        version_list_(other.version_list_),
+        table_(other.table_) {
+        other.version_list_ = nullptr;
+        other.table_ = nullptr;
+    }
+
+    Row& operator=(Row&& other) noexcept {
+        if (this != &other) {
+            delete version_list_;
+            uncommitted_txn_id_ = other.uncommitted_txn_id_;
+            rid = other.rid;
+            uncommitted_version_ = std::move(other.uncommitted_version_);
+            version_list_ = other.version_list_;
+            table_ = other.table_;
+
+            other.version_list_ = nullptr;
+            other.table_ = nullptr;
+        }
+        return *this;
+    }
+    Row(const Transaction &txn, const Tuple &tuple, idx_t row_id, Table *table);
+    ~Row() { delete version_list_; }
+    void tryInsert(const Tuple &tuple, Transaction &txn);//! Try to insert a new version. This version is temporarily not inserted into the skip list.
+    void insert(idx_t ts);//! Insert the version into the skip list.
+    void abort();
+    Tuple query(Transaction &txn) const;
+    bool check(const Transaction &txn) const;//! Check if the version txn read is the latest version.
 };
 
 class ReadTableGuard;
@@ -67,7 +109,7 @@ class ReadTableGuard {
 public:
     explicit ReadTableGuard(const std::vector<Row> &rows, std::shared_mutex &latch)
         : rows_(&rows), latch_(latch) {
-        latch_.lock_shared();    
+        latch_.lock_shared();
     }
 
     ~ReadTableGuard() { Drop(); }

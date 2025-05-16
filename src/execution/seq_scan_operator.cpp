@@ -47,7 +47,7 @@ OperatorState SeqScanOperator::Next(Chunk &output_chunk) {
         if (next_row_id >= read_guard.Rows().size()) {
             return EXHAUSETED;
         }
-        auto& [tuple, meta] = read_guard.Rows()[next_row_id];
+        const auto& tuple = read_guard.Rows()[next_row_id].query(exec_ctx_.txn_);
         next_row_id++;
 
         output_chunk.emplace_back(tuple.KeysFromTuple(key_attrs), next_row_id - 1);

@@ -2,6 +2,7 @@
 
 #include "common/typedefs.hpp"
 #include "common/macro.hpp"
+#include "storage/index.hpp"
 
 #include <atomic>
 #include <mutex>
@@ -10,6 +11,11 @@
 namespace babydb {
 
 class VersionSkipList;
+
+struct RowInfo{
+    idx_t row_id_;
+    Table *table;
+};
 
 //! Transaction State
 enum TransactionState { RUNNING, TAINTED, COMMITED, ABORTED };
@@ -43,12 +49,12 @@ public:
         return state_.load();
     }
 
-    void AddModifiedRow(VersionSkipList *row_list) {
-        modified_rows_.push_back(row_list);
+    void AddModifiedRow(idx_t row_id, Table *table) {
+        modified_rows_.push_back(RowInfo{row_id, table});
     }
 
-    void AddReadRow(VersionSkipList *row_list) {
-        read_rows_.push_back(row_list);
+    void AddReadRow(idx_t row_id, Table *table) {
+        read_rows_.push_back(RowInfo{row_id, table});
     }
 
     bool ReadOnly() {
@@ -65,9 +71,9 @@ private:
 
     idx_t commit_ts_{INVALID_ID};
 
-    std::vector<VersionSkipList*> modified_rows_;
+    std::vector<RowInfo> modified_rows_;
 
-    std::vector<VersionSkipList*> read_rows_;
+    std::vector<RowInfo> read_rows_;
 
 friend class TransactionManager;
 };

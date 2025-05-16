@@ -69,7 +69,7 @@ public:
 
 private:
     idx_t Find(const std::string &cname) const {
-        for (idx_t i = 0; i < cname.size(); i++) {
+        for (idx_t i = 0; i < this->size(); i++) {
             if (this->operator[](i) == cname) {
                 return i;
             }
@@ -94,4 +94,5 @@ enum class IsolationLevel : uint8_t {
     SERIALIZABLE
 };
 
+class Transaction;
 }

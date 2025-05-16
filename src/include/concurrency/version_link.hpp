@@ -2,6 +2,7 @@
 #include <random>
 
 #include "common/typedefs.hpp"
+#include <shared_mutex>
 
 namespace babydb {
 
@@ -9,25 +10,31 @@ void RegisterVersionNode();
 
 void UnregisterVersionNode();
 
-struct SkipListNode {
-    idx_t row_id, timestamp, level;
-    SkipListNode *next, *down;
-    SkipListNode(idx_t ri, idx_t ts, idx_t l, SkipListNode* n, SkipListNode* d) : row_id(ri), timestamp(ts), level(l), next(n), down(d) {}
+struct Version {
+    idx_t timestamp, level;
+    Tuple tuple;
+    Version *next, *down;
+    Version(const Tuple&tp, idx_t ts, idx_t l, Version* n, Version* d) : timestamp(ts), level(l), tuple(tp), next(n), down(d) {}
 };
 
 class VersionSkipList {
 private:
-    static const uint32_t SKIPLIST_LEVEL = 20;
+    static const uint32_t SKIPLIST_LEVEL = 8;
     uint32_t level;
+    idx_t write_ts_;//! The timestamp of the last write operation.
     std::mt19937 rd;
-    SkipListNode* head[SKIPLIST_LEVEL];
-    SkipListNode* tail[SKIPLIST_LEVEL];
+    mutable std::shared_mutex latch_;
+    Version* head[SKIPLIST_LEVEL];
+    Version* tail[SKIPLIST_LEVEL];
     uint32_t randomLevel();
+    Version* find(idx_t ts) const;//! Find the version with the largest timestamp less than or equal to ts without locking.
 public:
     VersionSkipList();
     ~VersionSkipList();
-    void insert(idx_t row_id, idx_t timestamp);
-    idx_t query(idx_t ts);
+    void insert(const Tuple&tp, idx_t timestamp);
+    void erase(idx_t ts);
+    Tuple query(idx_t ts);
+    bool check(idx_t ts);
 };
 
 }

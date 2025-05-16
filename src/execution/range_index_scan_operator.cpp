@@ -35,7 +35,7 @@ OperatorState RangeIndexScanOperator::Next(Chunk &output_chunk) {
         auto row_id = *next_ite_;
         next_ite_++;
 
-        auto& [tuple, meta] = read_guard.Rows()[row_id];
+        const auto& tuple = read_guard.Rows()[row_id].query(exec_ctx_.txn_);
         output_chunk.emplace_back(tuple.KeysFromTuple(key_attrs), row_id);
     }
 
