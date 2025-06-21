@@ -28,6 +28,16 @@ public:
 
     void SelfCheck() override;
 
+    std::string Type() override;
+
+    std::string ProbeTableId();
+
+    std::string ProbeTableCol();
+
+    std::string BuildTableId();
+
+    std::string BuildTableCol();
+
 private:
     void BuildHashTable();
 

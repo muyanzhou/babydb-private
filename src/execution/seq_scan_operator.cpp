@@ -10,6 +10,10 @@ static const Schema& FetchTableSchema(const ExecutionContext &exec_ctx, const st
     return table.schema_;
 }
 
+std::string SeqScanOperator::Type() {
+    return "SeqScanOperator";
+}
+
 static Schema CombineSchema(const std::string &table_name, const Schema &schema) {
     auto schema_copy = schema;
     for (auto &column : schema_copy) {

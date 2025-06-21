@@ -31,6 +31,10 @@ void InsertOperator::SelfCheck() {
     child_schema.GetKeyAttrs(input_schema_);
 }
 
+std::string InsertOperator::Type() {
+    return "InsertOperator";
+}
+
 OperatorState InsertOperator::Next(Chunk &output_chunk) {
     output_chunk.clear();
     auto &table = exec_ctx_.catalog_.FetchTable(table_name_);

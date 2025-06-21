@@ -27,6 +27,8 @@ public:
 
     void SelfCheck() override;
 
+    std::string Type() override;
+
 private:
     std::string table_name_;
 

@@ -13,6 +13,10 @@ HashJoinOperator::HashJoinOperator(const ExecutionContext &exec_ctx,
       probe_column_name_(probe_column_name),
       build_column_name_(build_column_name) {}
 
+std::string HashJoinOperator::Type() {
+    return "HashJoinOperator";
+}
+
 static Tuple UnionTuple(const Tuple &a, const std::vector<data_t>::iterator &start, idx_t width) {
     Tuple result = a;
     result.insert(result.end(), start, start + width);
@@ -97,4 +101,19 @@ void HashJoinOperator::BuildHashTable() {
     }
 }
 
+std::string HashJoinOperator::ProbeTableId() {
+    return probe_column_name_.substr(0, probe_column_name_.find('.'));
+}
+
+std::string HashJoinOperator::ProbeTableCol() {
+    return probe_column_name_.substr(probe_column_name_.find('.') + 1, probe_column_name_.size());
+}
+
+std::string HashJoinOperator::BuildTableId() {
+    return build_column_name_.substr(0, build_column_name_.find('.'));
+}
+
+std::string HashJoinOperator::BuildTableCol() {
+    return build_column_name_.substr(build_column_name_.find('.') + 1, build_column_name_.size());
+}
 }

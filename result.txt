@@ -1,0 +1,11 @@
+10a: correct time: 309ms
+11a: correct time: 362ms
+12a: correct time: 223ms
+13a: correct time: 1308ms
+14a: correct time: 426ms
+15a: correct time: 288ms
+16a: correct time: 2652ms
+17a: correct time: 2486ms
+18a: correct time: 988ms
+19a: correct time: 268ms
+Total time: 9315ms

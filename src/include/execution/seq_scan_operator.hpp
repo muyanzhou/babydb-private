@@ -30,6 +30,8 @@ public:
 
     void SelfCheck() override;
 
+    std::string Type() override;
+
     std::string BindTableName() override { return table_name_; }
 
 private:

@@ -78,10 +78,12 @@ static std::shared_ptr<Operator> BuildTree(std::ifstream &data_file, ExecutionCo
         idx_t probe_id, build_id;
         Read(data_file, probe_id);
         Read(data_file, build_id);
+        // std::cout << probe_id << " " << build_id << std::endl;
         auto probe_child = BuildTree(data_file, exec_ctx);
         auto build_child = BuildTree(data_file, exec_ctx);
         auto probe_col = probe_child->GetOutputSchema()[probe_id];
         auto build_col = build_child->GetOutputSchema()[build_id];
+        // std::cout << probe_col << " " << build_col << std::endl;
         return std::make_shared<HashJoinOperator>(exec_ctx, probe_child, build_child, probe_col, build_col);
     } else if (op_type == OPType::scan) {
         auto table_name = std::to_string(data_file.tellg());
@@ -122,6 +124,7 @@ static int64_t Run(std::string data_path, std::string test_name) {
     db_instance.Commit(*txn);
 
     auto cost = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    // std::cout << total_size << " " << expect_size << std::endl;
     std::cout << test_name << ": " << (expect_size == total_size ? "correct" : "wrong") << " time: " << cost.count() / 1000000 << "ms\n";
 
     return cost.count();

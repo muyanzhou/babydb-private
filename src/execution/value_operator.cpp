@@ -17,6 +17,10 @@ void ValueOperator::SelfCheck() {
     }
 }
 
+std::string ValueOperator::Type() {
+    return "ValueOperator";
+}
+
 OperatorState ValueOperator::Next(Chunk &output_chunk) {
     output_chunk.clear();
     while (output_chunk.size() < exec_ctx_.config_.CHUNK_SUGGEST_SIZE) {

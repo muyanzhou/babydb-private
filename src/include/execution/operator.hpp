@@ -49,6 +49,14 @@ public:
         return output_schema_;
     }
 
+    std::vector<std::shared_ptr<Operator>>& GetChildOperators() {
+        return child_operators_;
+    }
+
+    const ExecutionContext& GetExecutionContext() {
+        return exec_ctx_;
+    }
+
     void Check() {
         for (auto &child_operator : child_operators_) {
             child_operator->Check();
@@ -56,6 +64,8 @@ public:
         CheckSchema();
         SelfCheck();
     }
+
+    virtual std::string Type() = 0;
 
     virtual std::string BindTableName() { return INVALID_NAME; }
 
