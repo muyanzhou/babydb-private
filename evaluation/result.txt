@@ -1,0 +1,57 @@
+10a: correct time: 316ms
+11a: correct time: 393ms
+12a: correct time: 233ms
+13a: correct time: 1494ms
+14a: correct time: 431ms
+15a: correct time: 293ms
+16a: correct time: 2649ms
+17a: correct time: 2601ms
+18a: correct time: 981ms
+19a: correct time: 288ms
+Total time: 9683ms
+
+10a: correct time: 1423ms
+11a: correct time: 1170ms
+12a: correct time: 758ms
+13a: correct time: 5171ms
+14a: correct time: 1256ms
+15a: correct time: 1697ms
+16a: correct time: 17571ms
+17a: correct time: 10533ms
+18a: correct time: 7981ms
+19a: correct time: 2307ms
+Total time: 49872ms
+
+10a: correct time: 684ms
+11a: correct time: 450ms
+12a: correct time: 535ms
+13a: correct time: 3146ms
+14a: correct time: 709ms
+15a: correct time: 1277ms
+16a: correct time: 10958ms
+17a: correct time: 4524ms
+18a: correct time: 2758ms
+19a: correct time: 776ms
+Total time: 25822ms
+
+10a: correct time: 420ms
+5
+11a: correct time: 457ms
+10
+12a: correct time: 337ms
+16
+13a: correct time: 1925ms
+210
+14a: correct time: 579ms
+40
+15a: correct time: 367ms
+7
+16a: correct time: 3246ms
+20
+17a: correct time: 3278ms
+196
+18a: correct time: 1263ms
+17
+19a: correct time: 338ms
+7
+Total time: 12215ms

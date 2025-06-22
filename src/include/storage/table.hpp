@@ -51,6 +51,10 @@ public:
     //! Get the read and write permission to the table.
     WriteTableGuard GetWriteTableGuard();
 
+    const idx_t GetSize() const {
+        return rows_.size();
+    }
+
     const std::string GetIndex() const {
         return index_name_;
     }

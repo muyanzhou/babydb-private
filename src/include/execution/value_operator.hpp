@@ -22,9 +22,9 @@ public:
 
     OperatorState Next(Chunk &output_chunk) override;
 
-    idx_t Size() {return tuples_.size();}
+    idx_t Size() { return tuples_.size(); }
 
-    void Reset() {next_tuple_id = 0;}
+    void Reset() override { next_tuple_id = 0; }
 
 private:
     std::vector<Tuple> tuples_;

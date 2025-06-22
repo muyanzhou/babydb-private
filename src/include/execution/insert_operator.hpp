@@ -29,6 +29,8 @@ public:
 
     std::string Type() override;
 
+    void Reset() override {}
+
 private:
     std::string table_name_;
 

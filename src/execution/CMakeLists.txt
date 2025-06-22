@@ -12,6 +12,7 @@ add_library(
     insert_operator.cpp
     projection_operator.cpp
     range_index_scan_operator.cpp
+    jump_scan_operator.cpp
     update_operator.cpp
     value_operator.cpp)
 

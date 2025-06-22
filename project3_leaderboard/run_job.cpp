@@ -111,6 +111,7 @@ static int64_t Run(std::string data_path, std::string test_name) {
     auto start = std::chrono::high_resolution_clock::now();
     auto op_tree = BuildTree(data_file, exec_ctx);
     db_instance.OptimizeJoinPlan(op_tree);
+    auto _start = std::chrono::high_resolution_clock::now();
     Chunk data_chunk;
     OperatorState state = OperatorState::HAVE_MORE_OUTPUT;
     idx_t total_size = 0;
@@ -124,9 +125,10 @@ static int64_t Run(std::string data_path, std::string test_name) {
     db_instance.Commit(*txn);
 
     auto cost = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    auto _cost = std::chrono::duration_cast<std::chrono::nanoseconds>(end - _start);
     // std::cout << total_size << " " << expect_size << std::endl;
     std::cout << test_name << ": " << (expect_size == total_size ? "correct" : "wrong") << " time: " << cost.count() / 1000000 << "ms\n";
-
+    std::cout << _cost.count()/1000000 << std::endl;
     return cost.count();
 }
 

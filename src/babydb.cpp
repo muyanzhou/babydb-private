@@ -7,6 +7,7 @@
 #include "execution/hash_join_operator.hpp"
 #include "execution/seq_scan_operator.hpp"
 #include "execution/value_operator.hpp"
+#include "execution/jump_scan_operator.hpp"
 #include "storage/catalog.hpp"
 #include "storage/index.hpp"
 #include "storage/stlmap_index.hpp"
@@ -69,39 +70,33 @@ struct joinfo {
     std::string to, col, to_col;
     joinfo(std::string x, std::string y, std::string z) : to(x), col(y), to_col(z) {}
 };
-std::unordered_map<std::string, std::shared_ptr<ValueOperator>> vp;
+std::unordered_map<std::string, std::shared_ptr<Operator>> vp;
+std::unordered_map<std::string, bool> vis;
 void pre(std::string table, const ExecutionContext &exec_ctx) {
     if (vp.find(table) != vp.end()) return;
-    auto seqscan = std::make_shared<SeqScanOperator>(exec_ctx, table);
-    std::vector<Tuple> tuples;
-    OperatorState state = OperatorState::HAVE_MORE_OUTPUT;
-    Chunk data_chunk;
-    while (state == OperatorState::HAVE_MORE_OUTPUT) {
-        state = seqscan->Next(data_chunk);
-        for (auto &[tuple, meta] : data_chunk) {
-            tuples.emplace_back(tuple);
-        }
-    }
-    // std::cout << table << " " << tuples.size() << std::endl;
-    vp[table] = std::make_shared<ValueOperator>(exec_ctx, seqscan->GetOutputSchema(), std::move(tuples));
+    vp.insert(std::make_pair(table, std::make_shared<SeqScanOperator>(exec_ctx, table)));
+    // auto js = std::make_shared<JumpScanOperator>(exec_ctx, table);
+    // js->Check();
+    // js->Init();
+    // vp.insert(std::make_pair(table, js));
+    // auto seqscan = std::make_shared<SeqScanOperator>(exec_ctx, table);
+    // std::vector<Tuple> tuples;
+    // OperatorState state = OperatorState::HAVE_MORE_OUTPUT;
+    // Chunk data_chunk;
+    // while (state == OperatorState::HAVE_MORE_OUTPUT) {
+    //     state = seqscan->Next(data_chunk);
+    //     for (auto &[tuple, meta] : data_chunk) {
+    //         tuples.emplace_back(tuple);
+    //     }
+    // }
+    // // std::cout << table << " " << tuples.size() << std::endl;
+    // vp[table] = std::make_shared<ValueOperator>(exec_ctx, seqscan->GetOutputSchema(), std::move(tuples));
 }
 std::unordered_multimap<std::string, joinfo> edge;
-void buildtree(const std::shared_ptr<Operator> &node, const ExecutionContext &exec_ctx) {
-    if(node->Type() != "HashJoinOperator") {
-        return;
-    }
-    auto hnode = std::dynamic_pointer_cast<HashJoinOperator>(node);
-    buildtree(hnode->GetChildOperators()[0], exec_ctx);
-    buildtree(hnode->GetChildOperators()[1], exec_ctx);
-    std::string u = hnode->BuildTableId(), ucol = hnode->BuildTableCol();
-    std::string v = hnode->ProbeTableId(), vcol = hnode->ProbeTableCol();
-    pre(u, exec_ctx), pre(v, exec_ctx);
-    edge.insert(std::make_pair(u, joinfo(v, ucol, vcol)));
-    edge.insert(std::make_pair(v, joinfo(u, vcol, ucol)));
-}
+
 struct BloomFilter {
     idx_t hash_num;
-    const double ln2 = 0.69314718056, lnp = -4.60517018599;// p = 0.01
+    const double ln2 = 0.69314718056, lnp = -3.2;// p = 0.055
     std::string table_name, col_name;
     std::vector<bool> bitmap;
     BloomFilter(std::string t, std::string c) : table_name(t), col_name(c) {
@@ -132,61 +127,108 @@ struct BloomFilter {
         }
         return true;
     }
-    void build() {
+    bool build() {
         std::vector<data_t> data;
-        auto &value_op = vp[table_name];
+        auto &js_op = vp[table_name];
         OperatorState state = OperatorState::HAVE_MORE_OUTPUT;
         Chunk data_chunk;
         while (state == OperatorState::HAVE_MORE_OUTPUT) {
-            state = value_op->Next(data_chunk);
+            state = js_op->Next(data_chunk);
             for (auto &[tuple, meta] : data_chunk) {
                 data.emplace_back(tuple.KeyFromTuple(std::stoull(col_name)));
             }
+            data_chunk.clear();
         }
-        value_op->Reset();
+        js_op->Reset();
         idx_t n = data.size();
         idx_t m = 1 << static_cast<int>(std::round(std::log2(-lnp * n / ln2 / ln2)));
         hash_num = std::round(m * ln2 / n);
+        // if (hash_num > 4) hash_num = 4;
         // std::cout << "???" << m << " " << hash_num << std::endl;
         bitmap.resize(m, false);
         for (data_t x : data) insert(x);
+        return true;
     }
 };
-void semi_join(std::string table, std::string colt, std::string filter, std::string colf, const ExecutionContext &exec_ctx) {
-    auto bf = BloomFilter(filter, colf);
-    bf.build();
-    auto &value_op = vp[table];
+void semi_join(std::string table, const ExecutionContext &exec_ctx) {
+    // std::cout << table << " " << filter << std::endl;
+    auto range = edge.equal_range(table);
+    std::vector<std::array<std::string, 3>> tos;
+    for (auto it = range.first; it != range.second; it++) {
+        tos.push_back({it->second.col, it->second.to, it->second.to_col});
+    }
+    std::vector<BloomFilter> bf;
+    bf.reserve(tos.size());
+    for (idx_t i = 0; i < tos.size(); i++) {
+        bf.emplace_back(tos[i].at(1), tos[i].at(2));
+        bf.back().build();
+    }
+    auto &js_op = vp[table];
+    // std::vector<idx_t> del;
     std::vector<Tuple> tuples;
     OperatorState state = OperatorState::HAVE_MORE_OUTPUT;
     Chunk data_chunk;
     while (state == OperatorState::HAVE_MORE_OUTPUT) {
-        state = value_op->Next(data_chunk);
+        state = js_op->Next(data_chunk);
         for (auto &[tuple, meta] : data_chunk) {
-            auto key = tuple.KeyFromTuple(std::stoull(colt));
-            if (!bf.test(key)) continue;
-            tuples.push_back(tuple);
+            bool flag = true;
+            for (idx_t i = 0; i < tos.size(); i++) {
+                auto key = tuple.KeyFromTuple(std::stoull(tos[i].at(0)));
+                if (!bf[i].test(key)) {
+                    flag = false;
+                    break;
+                }
+            }
+            // if (!bf.test(key)) del.push_back(meta);
+            if (flag) tuples.push_back(tuple);
         }
+        // js_op->Delete(del);
     }
-    value_op = std::make_shared<ValueOperator>(exec_ctx, value_op->GetOutputSchema(), std::move(tuples));
+    // js_op->Reset();
+    js_op = std::make_shared<ValueOperator>(exec_ctx, js_op->GetOutputSchema(), std::move(tuples));
 }
-void forwardpass(std::string u, std::string fa, const ExecutionContext &exec_ctx) {
+void buildtree(const std::shared_ptr<Operator> &node, const ExecutionContext &exec_ctx) {
+    if(node->Type() != "HashJoinOperator") {
+        return;
+    }
+    auto hnode = std::dynamic_pointer_cast<HashJoinOperator>(node);
+    buildtree(hnode->GetChildOperators()[0], exec_ctx);
+    buildtree(hnode->GetChildOperators()[1], exec_ctx);
+    std::string u = hnode->BuildTableId(), ucol = hnode->BuildTableCol();
+    std::string v = hnode->ProbeTableId(), vcol = hnode->ProbeTableCol();
+    pre(u, exec_ctx), pre(v, exec_ctx);
+    // semi_join(v, vcol, u, ucol, exec_ctx);
+    // edge.insert(std::make_pair(u, joinfo(v, ucol, vcol)));
+    edge.insert(std::make_pair(v, joinfo(u, vcol, ucol)));
+}
+void pass(std::string u, const ExecutionContext &exec_ctx) {
+    if (vis.find(u) != vis.end()) return;
+    vis.insert(std::make_pair(u, true));
     auto range = edge.equal_range(u);
     for (auto it = range.first; it != range.second; it++) {
         std::string v = it->second.to;
-        if(v == fa) continue;
-        forwardpass(v, u, exec_ctx);
-        semi_join(u, it->second.col, v, it->second.to_col, exec_ctx);
+        pass(v, exec_ctx);
     }
+    semi_join(u, exec_ctx);
 }
-void backwardpass(std::string u, std::string fa, const ExecutionContext &exec_ctx) {
-    auto range = edge.equal_range(u);
-    for (auto it = range.first; it != range.second; it++) {
-        std::string v = it->second.to;
-        if(v == fa) continue;
-        semi_join(v, it->second.to_col, u, it->second.col, exec_ctx);
-        backwardpass(v, u, exec_ctx);
-    }
-}
+// void forwardpass(std::string u, std::string fa, const ExecutionContext &exec_ctx) {
+//     auto range = edge.equal_range(u);
+//     for (auto it = range.first; it != range.second; it++) {
+//         std::string v = it->second.to;
+//         if(v == fa) continue;
+//         forwardpass(v, u, exec_ctx);
+//         semi_join(u, it->second.col, v, it->second.to_col, exec_ctx);
+//     }
+// }
+// void backwardpass(std::string u, std::string fa, const ExecutionContext &exec_ctx) {
+//     auto range = edge.equal_range(u);
+//     for (auto it = range.first; it != range.second; it++) {
+//         std::string v = it->second.to;
+//         if(v == fa) continue;
+//         semi_join(v, it->second.to_col, u, it->second.col, exec_ctx);
+//         backwardpass(v, u, exec_ctx);
+//     }
+// }
 void optimize(std::shared_ptr<Operator> &node) {
     if(node->Type() != "HashJoinOperator") {
         auto snode = std::dynamic_pointer_cast<SeqScanOperator>(node);
@@ -201,9 +243,18 @@ void BabyDB::OptimizeJoinPlan(std::shared_ptr<Operator> &join_plan) {
     edge.clear();
     auto exec_ctx = join_plan->GetExecutionContext();
     buildtree(join_plan, exec_ctx);
-    std::string root = edge.begin()->first;
-    forwardpass(root, "", exec_ctx);
-    backwardpass(root, "", exec_ctx);
+    vis.clear();
+    for(auto &[table, ptr] : vp) {
+        // semi_join(table, exec_ctx);
+        if (vis.find(table) != vis.end()) continue;
+        pass(table, exec_ctx);
+    }
+    // std::string root = edge.begin()->first;
+    // for (auto &[table, op] : vp)
+    //     if (exec_ctx.catalog_.FetchTable(root).GetSize() < exec_ctx.catalog_.FetchTable(table).GetSize())
+    //         root = table;
+    // forwardpass(root, "", exec_ctx);
+    // backwardpass(root, "", exec_ctx);
     optimize(join_plan);
 }
 

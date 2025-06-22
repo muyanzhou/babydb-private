@@ -34,6 +34,8 @@ public:
 
     std::string BindTableName() override { return table_name_; }
 
+    void Reset() override { next_row_id = 0; }
+
 private:
     std::string table_name_;
 

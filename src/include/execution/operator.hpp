@@ -67,6 +67,8 @@ public:
 
     virtual std::string Type() = 0;
 
+    virtual void Reset() = 0;
+
     virtual std::string BindTableName() { return INVALID_NAME; }
 
 protected:

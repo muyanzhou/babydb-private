@@ -30,6 +30,8 @@ public:
 
     std::string Type() override;
 
+    void Reset() override {}
+
     std::string ProbeTableId();
 
     std::string ProbeTableCol();
